@@ -229,18 +229,156 @@ class NeuralNetwork:
         )
         self.bias_hidden += self.learning_rate * grad_bias_hidden
 
+    def train(
+            self,
+            inputs: np.ndarray,
+            targets: np.ndarray,
+            epochs: int,
+            progress_interval: int = 500,
+              ) -> list[float]:
+
+        loss_history:list[float] = []
+
+        for epoch in range(1,epochs + 1):
+            predictions = self.forward_propagation(inputs)
+            loss = self.calculate_loss(predictions, targets)
+            loss_history.append(loss)
+
+            self.backward_propagation(inputs, targets)
+
+            if epoch % progress_interval == 0 or epoch == 1:
+                print(f"Epoch {epoch:<5} | Loss: {loss:.4f}")
+
+        return loss_history
+
+def print_section_heading(title: str) -> None:
+
+    line = "=" * 40
+    print(f"\n{line}")
+    print(f"{title}\n{line}")
+
+def print_network_parameters(network:NeuralNetwork) -> None:
+
+    print("Weights (Input -> Hidden):")
+    print(network.weights_input_hidden)
+    print("\nBiases (Hidden Layer):")
+    print(network.bias_hidden)
+    print("\nWeights (Hidden Output):")
+    print(network.weights_hidden_output)
+    print("\nBiases (Output Layer):")
+    print(network.bias_output)
+
+
+def print_predictions(
+        network:NeuralNetwork,
+        inputs: np.ndarray,
+        targets: np.ndarray,
+) -> None:
+
+    predictions = network.forward_propagation(inputs)
+
+    for n in range(inputs.shape[0]):
+        print(f"Input: {inputs[n]}")
+        print(f"Target: {int(targets[n,0])}")
+        print(f"Prediction: {predictions[n,0]:.3f}\n")
+
+def plot_sigmoid_curve() -> None:
+
+    x = np.linspace(-10, 10, 200)
+    y = sigmoid(x)
+
+    plt.figure(figsize=(8,5))
+    plt.plot(x, y, label="Sigmoid(x)", color="blue")
+    plt.title("Sigmoid Activation Function")
+    plt.xlabel("x")
+    plt.ylabel("sigmoid(x)")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+def plot_loss_curve(loss_history: list[float]) -> None:
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(loss_history, color="red")
+    plt.title("Training Loss Over Epochs")
+    plt.xlabel("Epoch")
+    plt.ylabel("Mean Squared Error (Loss)")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
 
 # --------------------------------------------------------------------------------
 # 2. Main Execution Function
 # --------------------------------------------------------------------------------
 def main() -> None:
 
-    json_path = "../files/library_books.json"
+    # --- XOR dataset ---
+    X = np.array(
+        [
+            [0, 0],
+            [0, 1],
+            [1, 0],
+            [1, 1],
+        ],
+        dtype=float,
+    )
 
-    # Instantiate a LibraryChatbot
-    chatbot = LibraryChatbot(json_path)
-    chatbot.chat()
+    y = np.array(
+        [
+            [0],
+            [1],
+            [1],
+            [0],
+        ],
+        dtype=float,
+    )
 
+    # --- Hyperparameters ---
+    epochs = 5000
+    learning_rate = 0.5
+
+    # --- Create the network ---
+    network = NeuralNetwork(
+        input_size=2,
+        hidden_size=2,
+        output_size=1,
+        learning_rate=learning_rate,
+        seed=42,
+    )
+
+    # --- Display Network Architecture ---
+    print_section_heading("NETWORK ARCHITECTURE")
+    print("Input Layer      : 2 neurons")
+    print("Hidden Layer      : 2 neurons (sigmoid activation)")
+    print("Output Layer      : 1 neuron (sigmoid activation)")
+    print(f"Learning Rate     : {learning_rate}")
+    print(f"Epochs            : {epochs}")
+
+    # --- Display initial parameters ---
+    print_section_heading("INITIAL NETWORK PARAMETERS")
+    print_network_parameters(network)
+
+    # --- Train the network ---
+    print_section_heading("TRAINING PROGRESS")
+    loss_history = network.train(X, y, epochs, progress_interval = 500)
+
+    # --- Display final parameters ---
+    print_section_heading("FINAL NETWORK PARAMETERS")
+    print_network_parameters(network)
+
+    # --- Display final predictions ---
+    print_section_heading("FINAL PREDICTIONS")
+    print_predictions(network, X, y)
+
+    # --- Visualisations ---
+    print_section_heading("GENERATING VISUALISATIONS")
+    print("1. Sigmoid activation function curve...")
+    print("2. Training loss curve")
+
+    plot_sigmoid_curve()
+    plot_loss_curve(loss_history)
 
 # --------------------------------------------------------------------------------
 # 3. Run the script by invoking it's main() function
