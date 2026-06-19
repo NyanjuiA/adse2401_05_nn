@@ -35,6 +35,8 @@ Requirements:
 Author: Nyanjui
 Date: 17 June 2026
 """
+from tabnanny import verbose
+
 # --------------------------------------------------------------------------------
 # 0. Import required modules
 # --------------------------------------------------------------------------------
@@ -128,12 +130,12 @@ def validate_dataset(
             f"\nGot {x_test.shape[1:]}."
         )
 
-    if len(y_train) != len(x_train.shape[0]):
+    if len(y_train) != x_train.shape[0]:
         raise ValueError(
             f"Number of training labels does not match number of training images!"
         )
 
-    if len(y_test) != len(x_test.shape[0]):
+    if len(y_test) != x_test.shape[0]:
         raise ValueError(
             f"Number of testing labels does not match number of testing images!"
         )
@@ -298,19 +300,237 @@ def plot_confusion_matrix(
     plt.close() # plt.show() to display the graph
     print(f"Confusion matrix saved to: {save_path}\n")
 
+def display_prediction_examples(
+        model: tf.keras.Model,
+        x_test: np.ndarray,
+        y_test_true: np.ndarray,
+        save_path: Path,
+) -> None:
 
+    print(f"Generating prediction examples plot...")
+    # Obtain predictions as integer class indices
+    y_pred_probs = model.predict(x_test[:10],verbose=0)
+    y_pred_labels = np.argmax(y_pred_probs,axis=1)
+
+    plt.figure(figsize=(15,7))
+    for idx in range(10):
+        plt.subplot(2,5, idx+1)
+        plt.imshow(x_test[idx].squeeze(),cmap='gray')
+        actual_class = CLASS_NAMES[y_test_true[idx]]
+        predicted_class = CLASS_NAMES[y_pred_labels[idx]]
+        colour = "green" if y_test_true[idx] == y_pred_labels[idx] else "red"
+        plt.title(
+            f"Actual: {actual_class}\nPredicted: {predicted_class}",
+            fontsize=9,color=colour,
+        )
+        plt.axis('off')
+
+    plt.suptitle("Prediction Examples (Green = Correct, Red = Incorrect)",fontsize=14)
+    plt.tight_layout(rect=[0, 0,1,.95])
+    plt.savefig(save_path,dpi=150)
+    plt.close() # plt.show() to display the graph
+    print(f"Prediction examples saved to: {save_path}\n")
+
+def predict_single_image(
+        model: tf.keras.Model,
+        image: np.ndarray,
+        true_label: int
+) -> None:
+
+    # Expand dimensions to create a batch size 1
+    image_batch = np.expand_dims(image, axis=0)
+    prediction_probs = model.predict(image_batch,verbose=0)[0]
+    predicted_class = np.argmax(prediction_probs)
+
+    print("-" * 70)
+    print("SINGLE IMAGE PREDICTION DEMONSTRATION")
+    print("-" * 70)
+    print(f"True label                  : {CLASS_NAMES[true_label]}")
+    print(f"Predicted label             : {CLASS_NAMES[predicted_class]}")
+    print(f"Confidence                  : {prediction_probs[predicted_class]}")
+    print("Class probabilities          :")
+    for idx, prob in enumerate(prediction_probs):
+        marker = " <--" if idx == predicted_class else ""
+        print(f" {CLASS_NAMES[idx]:<15s}: {prob:.4f}{marker}")
+    print("-" * 70)
 
 
 # --------------------------------------------------------------------------------
-# 3. Main Execution Function
+# 6. CNN Model Definition
 # --------------------------------------------------------------------------------
-# def main() -> None:
+def build_cnn_model() -> Sequential:
 
+    print("Building CNN model...")
 
+    model = Sequential([
+        # First convolution block
+        Conv2D
+            (
+            filters = 32,
+            kernel_size=(3, 3),
+            activation='relu', # ReLU activation: introduces non-linearity to prevent vanishing gradient problem
+            padding='same',
+            input_shape=(IMAGE_HEIGHT, IMAGE_WIDTH, 1)
+        ),
+        MaxPooling2D(pool_size=(2, 2)),
+
+        # Second convolutional block
+        Conv2D(
+            filters=64,
+            kernel_size=(3, 3),
+            activation='relu',
+            padding='same',
+        ),
+        MaxPooling2D(pool_size=(2, 2)),
+
+        # Flatten the 2D feature maps into a 1D vector
+        Flatten(),
+
+        # Fully connected (dense) layer with ReLU activation
+        Dense(128, activation='relu'),
+
+        # Output layer with Softmax activation:
+        # Converts raw scores into a probability distribution over the 10 classes
+        Dense(NUM_CLASSES, activation='softmax')
+    ])
+
+    # Compile the model
+    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+    print("Model built and compiled successfully.\n")
+    # Display a summary of the model architecture
+    model.summary()
+    print()
+    return model
+
+# --------------------------------------------------------------------------------
+# 7. Model Training and evaluation
+# --------------------------------------------------------------------------------
+def train_model(
+        model: Sequential,
+        x_train: np.ndarray,
+        y_train: np.ndarray,
+) -> tf.keras.callbacks.History:
+
+    print("Training model...")
+    history = model.fit(
+        x_train,
+        y_train,
+        epochs = EPOCHS,
+        batch_size = BATCH_SIZE,
+        validation_split = 0.2,
+        verbose=1
+
+    )
+    print("Traininig complete...")
+    return history
+
+def evaluate_model(
+        model: Sequential,
+        x_test: np.ndarray,
+        y_test: np.ndarray,
+) -> tuple[float, float]:
+
+    print("Evaluating model...")
+    test_loss, test_accuracy = model.evaluate(x_test, y_test,verbose=0)
+
+    # Obtain integer predictions for classification report
+    y_test_int = np.argmax(y_test,axis=1)
+    y_pred_probs = model.predict(x_test, verbose=0)
+    y_pred_int = np.argmax(y_pred_probs,axis=1)
+
+    print("\n" + "-" * 70)
+    print("CLASSIFICATION REPORT")
+    print("-" * 70)
+    print(
+        classification_report(
+            y_test_int,
+            y_pred_int,
+            target_names=CLASS_NAMES,
+        )
+    )
+    print("-" * 70)
+    return test_loss, test_accuracy
+
+# --------------------------------------------------------------------------------
+# 8. Main Execution Function
+# --------------------------------------------------------------------------------
+def main() -> None:
+
+    # Ensure the results directory exists
+    RESULTS_DIR.mkdir(exist_ok=True,parents=True)
+
+    # 1. Load the dataset
+    x_train_raw, y_train_raw,x_test_raw, y_test_raw = load_dataset()
+
+    # 2. Validate dataset intergrity
+    validate_dataset(x_train_raw,y_train_raw,x_test_raw,y_test_raw)
+
+    # 3. Display dataset information
+    display_dataset_information(x_train_raw,y_train_raw,x_test_raw,y_test_raw)
+
+    # 4. Preproess the data
+    x_train_proc, y_train_proc, x_test_proc, y_test_proc = preprocess_data(
+        x_train_raw,y_train_raw,x_test_raw,y_test_raw
+    )
+
+    # 5. Build the CNN model
+    model = build_cnn_model()
+
+    # 6. Train the model
+    history = train_model(model, x_train_proc, y_train_proc)
+
+    # 7. Evaluate the model
+    test_loss, test_accuracy = evaluate_model(model, x_test_proc, y_test_proc)
+
+    # 8. Generate visualisations
+    print("Generating visualisations...")
+
+    # Sample images from the raw training set (before preprocessing for display)
+    plot_sample_images(
+        x_train_proc, y_train_proc, RESULTS_DIR/ "fashion_sample_images.png"
+    )
+
+    # Training history plot
+    plot_training_history(history,RESULTS_DIR/ "fashion_training_history.png")
+
+    # Confusion matrix
+    y_test_int = np.argmax(y_test_proc,axis=1)
+    y_pred_int = np.argmax(model.predict(x_test_proc,verbose=0),axis=1)
+    plot_confusion_matrix(
+        y_test_int,y_pred_int,RESULTS_DIR / "fashion_confusion_matrix.png"
+    )
+
+    # Prediction examples
+    display_prediction_examples(
+        model, x_test_proc, y_test_int, RESULTS_DIR / "fashion_prediction_examples.png"
+    )
+
+    print(f"All images/visualisation generated and saved.\n")
+
+    # 9. Single image prediction demostration
+    predict_single_image(model,x_test_proc[0],y_test_int[0])
+
+    # 10. Final output summary
+    print("-" * 70)
+    print("FASHION-MNIST CNN RESULTS\n")
+    print(f"Training Images: {x_train_proc.shape[0]}")
+    print(f"Testing Images:  {x_test_proc.shape[0]}\n")
+    print(f"Test Accuracy: {test_accuracy:.4f}")
+    print(f"Test Loss:     {test_loss:.4f}\n")
+    print("Activation Functions Used:")
+    print("  - ReLU (Hidden layers)")
+    print("    Introduces non-linearity and helps prevent vanishing gradients.")
+    print("  - Softmax (Output layer)")
+    print("    Converts output scores into probabilities across the ten clothing classes.\n")
+    print("Output files saved to:")
+    print(f"  {RESULTS_DIR}/")
+    print("-" * 70)
+    print("END OF DEMONSTRATION")
 
 
 # --------------------------------------------------------------------------------
-# 4. Run the script by invoking it's main() function
+# 9. Run the script by invoking it's main() function
 # --------------------------------------------------------------------------------
 if __name__ == "__main__":
     main()
